@@ -96,7 +96,7 @@ The required options are as follows:
 
 So, to run you would do something like this:
 
-`python cost_calc.py -i path/to/input.xlsx -o path/to/output.xlsx -cgstoid path/to/coingecko/config.json -chstoid path/to/coinhall/config.json`
+`python staking-rewards.py -i path/to/input.xlsx -o path/to/output.xlsx -cgstoid path/to/coingecko/config.json -chstoid path/to/coinhall/config.json`
 
 You will then need to examine the output file to confirm the process worked after it has finished.
 
