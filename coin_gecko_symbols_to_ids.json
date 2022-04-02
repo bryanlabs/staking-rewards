@@ -1,0 +1,127 @@
+{
+    "DAI": {
+        "id": "dai",
+        "symbol": "dai",
+        "name": "Dai"
+    },
+    "ADA": {
+        "id": "cardano",
+        "symbol": "ada",
+        "name": "Cardano"
+    },
+    "ANC": {
+        "id": "anchor-protocol",
+        "symbol": "anc",
+        "name": "Anchor Protocol"
+    },
+    "MIR": {
+        "id": "mirror-protocol",
+        "symbol": "mir",
+        "name": "Mirror Protocol"
+    },
+    "MINE": {
+        "id": "pylon-protocol",
+        "symbol": "mine",
+        "name": "Pylon Protocol"
+    },
+    "STT": {
+        "id": "starterra",
+        "symbol": "stt",
+        "name": "StarTerra"
+    },
+    "UST": {
+        "id": "terrausd",
+        "symbol": "ust",
+        "name": "TerraUSD"
+    },
+    "LUNA": {
+        "id": "terra-luna",
+        "symbol": "luna",
+        "name": "Terra"
+    },
+    "KRT": {
+        "id": "terra-krw",
+        "symbol": "krt",
+        "name": "TerraKRW"
+    },
+    "ATOM": {
+        "id": "cosmos",
+        "symbol": "atom",
+        "name": "Cosmos Hub"
+    },
+    "PSI": {
+        "id": "nexus-governance-token",
+        "symbol": "psi",
+        "name": "Nexus Protocol"
+    },
+    "LOOP": {
+        "id": "loop-token",
+        "symbol": "loop",
+        "name": "LOOP Finance"
+    },
+    "VKR": {
+        "id": "valkyrie-protocol",
+        "symbol": "vkr",
+        "name": "Valkyrie Protocol"
+    },
+    "OSMO": {
+        "id": "osmosis",
+        "symbol": "osmo",
+        "name": "Osmosis"
+    },
+    "ORION": {
+        "id": "orion-money",
+        "symbol": "orion",
+        "name": "Orion Money"
+    },
+    "APOLLO": {
+        "id": "apollo-dao",
+        "symbol": "apollo",
+        "name": "Apollo DAO"
+    },
+    "ROWAN": {
+        "id": "sifchain",
+        "symbol": "erowan",
+        "name": "Sifchain"
+    },
+    "AKT": {
+        "id": "akash-network",
+        "symbol": "akt",
+        "name": "Akash Network"
+    },
+    "JUNO": {
+        "id": "juno-network",
+        "symbol": "juno",
+        "name": "JUNO"
+    },
+    "DVPN": {
+        "id": "sentinel",
+        "symbol": "dvpn",
+        "name": "Sentinel"
+    },
+    "KUJI": {
+        "id": "kujira",
+        "symbol": "kuji",
+        "name": "Kujira"
+    },
+    "SCRT": {
+        "id": "secret",
+        "symbol": "scrt",
+        "name": "Secret"
+    },
+    "CMDX": {
+        "id": "comdex",
+        "symbol": "cmdx",
+        "name": "Comdex"
+    },
+    "TNS": {
+        "id": "terra-name-service",
+        "symbol": "tns",
+        "name": "Terra Name Service"
+    },
+    "BTSG": {
+        "id": "bitsong",
+        "symbol": "btsg",
+        "name": "BitSong"
+    }
+}

@@ -1,0 +1,27 @@
+{
+    "MINE": {
+        "id": "terra178jydtjvj4gw8earkgnqc80c3hrmqj4kw2welz",
+        "symbol": "mine",
+        "name": "Pylon Protocol"
+    },
+    "PSI": {
+        "id": "terra163pkeeuwxzr0yhndf8xd2jprm9hrtk59xf7nqf",
+        "symbol": "psi",
+        "name": "Nexus Protocol"
+    },
+    "LOOP": {
+        "id": "terra106a00unep7pvwvcck4wylt4fffjhgkf9a0u6eu",
+        "symbol": "loop",
+        "name": "LOOP Finance"
+    },
+    "VKR": {
+        "id": "terra1e59utusv5rspqsu8t37h5w887d9rdykljedxw0",
+        "symbol": "vkr",
+        "name": "Valkyrie Protocol"
+    },
+    "APOLLO": {
+        "id": "terra1xj2w7w8mx6m2nueczgsxy2gnmujwejjeu2xf78",
+        "symbol": "apollo",
+        "name": "Apollo DAO"
+    }
+}
