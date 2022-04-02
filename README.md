@@ -90,7 +90,9 @@ The required options are as follows:
 
 * `-i` The input Excel file path to process
 * `-o` The output Excel file path to create
-* `-stoif` The configuration JSON file path
+* `-cgstoid` The configuration JSON file path for the CoinGecko symbols to ids configuration
+* `-chstoid` The configuration JSON file path for the Coinhall symbols to ids configuration
+
 
 So, to run you would do something like this:
 
