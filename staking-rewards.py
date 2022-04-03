@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from os.path import exists
 from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
 import datetime
 import traceback
 
@@ -89,7 +90,9 @@ def get_key_data_point_indexes(rows, dateColumn, yearFilter):
     print("Gathering key data points for classifications", KEY_CLASSIFICATIONS)
     return [index for index, row in enumerate(rows) if "classification" in row and row["classification"] in KEY_CLASSIFICATIONS and row[dateColumn].year == yearFilter]
 
-def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, coinhall_symbols_to_id_configs, date_column, symbolColumn, valueColumn):
+def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, coinhall_symbols_to_id_configs, date_column, symbolColumn, valueColumn, simplified_rows_headers):
+
+    print(f"Processing {len(key_data_point_indexes)} rows that matched the metric")
 
     symbols_to_dates_to_rows = {}
 
@@ -111,6 +114,7 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
 
     #loop through chunks of data and send to API for processing
     print("Reaching out to CoinGecko for symbol cost data, this may take a while...")
+
     symbols_to_dates_to_costs = {}
     for chunk in chunk_symbols_and_dates(symbols_to_dates_to_rows, COIN_GECKO_REQUEST_CHUNKS):
         for symbol in chunk:
@@ -133,7 +137,7 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
                     print("Your CoinGecko symbol config list does not support symbol", symbol)
                 
         time.sleep(COIN_GECKO_THROTTLE_TIME)
-    
+
     print("Finished reaching out to CoinGecko")
 
     missing_coingecko_coverage = {}
@@ -146,11 +150,12 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
 
         try:
             row["usdValue"] = symbols_to_dates_to_costs[boughtCurrency][date_key]["market_data"]["current_price"]["usd"] * row[valueColumn]
-        except KeyError:
+        except:
             missing_coingecko_coverage[i] = {"symbol": boughtCurrency, "date": row[date_column]}
 
         rows[i] = row
 
+    missing_coinhall_coverage = {}
     if missing_coingecko_coverage:
         print("CoinGecko does not provide coverage for the following Symbol + Date combinations:")
         for index in missing_coingecko_coverage:
@@ -159,7 +164,6 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
         print("Attempting Coinhall fallback API")
 
         index_to_costs = {}
-        missing_coinhall_coverage = {}
         print("Reaching out to Coinhall for symbol cost data, this may take a while...")
         for index in missing_coingecko_coverage:
             symbol = missing_coingecko_coverage[index]['symbol']
@@ -178,6 +182,7 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
                 time.sleep(COINHALL_THROTTLE_TIME)
             else:
                 print("Your Coinhall symbol config list does not support symbol", symbol)
+                missing_coinhall_coverage[index] = {"symbol": symbol, "date": date}
         
         print("Finished reaching out to Coinhall")
         for index in index_to_costs:
@@ -188,11 +193,30 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
         if missing_coinhall_coverage:
             print("CoinHall does not provide coverage for the following Symbol + Date combinations:")
             for index in missing_coinhall_coverage:
+                row = rows[index]
+                row["usdValue"] = 0
+                rows[index] = row
                 print(f"\tSymbol: {missing_coinhall_coverage[index]['symbol']}\t\tDate: {missing_coinhall_coverage[index]['date']}\t\t(Excel Row {index + 2})")
         else:
-            print("CoinHall provided coverage for all CoinGecko missing symbols")
+            print("CoinHall provided coverage for all CoinGecko missing symbol/date combinations")
+    else:
+        print("CoinGecko provided coverage for all symbol/date combinations")
+    
 
-    return rows
+    simplified_rows = []
+
+    for index in key_data_point_indexes:
+        row = rows[index]
+        simplified_row = {header: row[header] for header in simplified_rows_headers}
+        if index in missing_coinhall_coverage:
+            simplified_row["comment"] = "Not covered, fixme"
+        else:
+            simplified_row["comment"] = ""
+        simplified_rows.append(simplified_row)
+
+
+
+    return rows, simplified_rows
 
 #creates chunks of symbols and dates to send for API processing
 def chunk_symbols_and_dates(symbols_to_dates, len_chunks):
@@ -291,7 +315,8 @@ def make_coinhall_api_request(request_url, error_string, throttle_time):
     except Exception as err:
         print(error_string, err)
         sys.exit(1)
-def output_rows(title, headers, rows, fname):
+
+def output_rows(title, headers, rows, fname, sum_header=None):
     print("Creating new Excel file", fname)
     wb = Workbook()
     ws1 = wb.active
@@ -307,6 +332,18 @@ def output_rows(title, headers, rows, fname):
             else:
                 data.append(None)
         ws1.append(data)
+
+    if sum_header and sum_header in headers:
+        index = headers.index(sum_header) + 1
+        column = get_column_letter(index)
+
+        first_row = column + "2"
+        last_row = column + str(len(ws1[column]))
+
+        sum_formula = f"= SUM({first_row}:{last_row})"
+
+        sum_formula_cell = column + str(len(ws1[column]) + 1)
+        ws1[sum_formula_cell] = sum_formula
 
     wb.save(fname)
 
@@ -358,9 +395,12 @@ def main():
 
     title, headers, rows = parse_input_data(args.input_file)
     key_data_point_indexes = get_key_data_point_indexes(rows, args.date_column, args.year_filter)
-    rows = process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, coinhall_symbols_to_id_configs, args.date_column, args.symbol_column, args.value_column)
+    simplified_rows_headers = [args.date_column, args.symbol_column, args.value_column, "usdValue"]
+    rows, simplified_rows = process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, coinhall_symbols_to_id_configs, args.date_column, args.symbol_column, args.value_column, simplified_rows_headers)
     headers.append("usdValue")
+    simplified_rows_headers.append("comment")
     output_rows(title, headers, rows, args.output_file)
+    output_rows(title, simplified_rows_headers, simplified_rows, args.output_file + "-simplified.xlsx", sum_header="usdValue")
 
 if __name__ == "__main__":
     try:

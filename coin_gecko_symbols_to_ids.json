@@ -123,5 +123,20 @@
         "id": "bitsong",
         "symbol": "btsg",
         "name": "BitSong"
+    },
+    "HUAHUA": {
+        "symbol": "huahua",
+        "id": "chihuahua-token",
+        "name": "Chihuahua Chain"
+    },
+    "STARS": {
+        "symbol": "stars",
+        "id": "stargaze",
+        "name": "Stargaze"
+    },
+    "VDL": {
+        "symbol": "vdl",
+        "id": "vidulum",
+        "name": "Vidulum"
     }
 }
