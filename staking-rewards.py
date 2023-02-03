@@ -40,7 +40,7 @@ def parse_args():
     parser.add_argument('--value-column', '-vc', help='The column in the EXCEL that stores the symbol of interest', default="boughtQuantity")
     parser.add_argument('--date-column', '-dc', help='The column in the EXCEL that stores the symbol of interest', default="timeExecuted")
     parser.add_argument('--year-filter', '-yf', help='The year to gather data for', default=2022, type=int)
-    parser.add_argument('--coingecko-cache', '-cg-c', help='The year to gather data for', default="./.coingecko_cache.json", type=str)
+    parser.add_argument('--coingecko-cache', '-cg-c', help='The JSON file holding cached data from CoinGecko (used in subsequent runs)', default="./.coingecko_cache.json", type=str)
     args = parser.parse_args()
     return args
 
@@ -61,7 +61,7 @@ def validate_args(args):
 
 def get_coingecko_cache(coingecko_cache_file):
     if not exists(coingecko_cache_file):
-        print("No CoinGecko price cache file found, creating...")
+        print(f"No CoinGecko price cache file found at {coingecko_cache_file}, creating...")
         with open(coingecko_cache_file, 'w') as fp:
             json.dump({}, fp)
         return {}
@@ -126,8 +126,6 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
         else:
             symbols_to_dates_to_rows[boughtCurrency][date_key].append(i)
 
-
-
     symbols_to_dates_to_costs = {}
 
     #gather the cached CoinGecko costs so we dont attempt to grab them again
@@ -189,33 +187,32 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
                             except Exception as err:
                                 write_coingecko_cache(coingecko_cache, coingecko_cache_file)
                                 print("CoinGecko API call failed", err)
-                                raise err
+                                raise CaughtError(f"CoinGecko API call failed, subsequent runs will use the cache file at {coingecko_cache_file} to start from this checkpoint")
                         else:
                             write_coingecko_cache(coingecko_cache, coingecko_cache_file)
                             print("CoinGecko API call failed", err)
-                            raise err
-                    else:
+                            raise CaughtError(f"CoinGecko API call failed, subsequent runs will use the cache file at {coingecko_cache_file} to start from this checkpoint")
                         
-                        #safely get a None value if the json structure is not found in response
-                        #this was found during testing of some symbols where they store data but not the USD cost on that date
-                        symbol_date_cost = resp.json().get("market_data", {}).get("current_price", {}).get("usd")
-                        symbols_to_dates_to_costs[symbol][date] = symbol_date_cost
+                    #safely get a None value if the json structure is not found in response
+                    #this was found during testing of some symbols where they store data but not the USD cost on that date
+                    symbol_date_cost = resp.json().get("market_data", {}).get("current_price", {}).get("usd")
+                    symbols_to_dates_to_costs[symbol][date] = symbol_date_cost
 
-                        if symbol in coingecko_cache:
-                            coingecko_cache[symbol][date] = symbols_to_dates_to_costs[symbol][date]
-                        else:
-                            coingecko_cache[symbol] = {}
-                            coingecko_cache[symbol][date] = symbols_to_dates_to_costs[symbol][date]
+                    if symbol in coingecko_cache:
+                        coingecko_cache[symbol][date] = symbols_to_dates_to_costs[symbol][date]
+                    else:
+                        coingecko_cache[symbol] = {}
+                        coingecko_cache[symbol][date] = symbols_to_dates_to_costs[symbol][date]
 
-                        write_coingecko_cache(coingecko_cache, coingecko_cache_file)
+                    write_coingecko_cache(coingecko_cache, coingecko_cache_file)
 
-                        coingecko_requests_made += 1
-                        #self-throttling to stay under CoinGecko throttle limits
-                        if coingecko_requests_made == COIN_GECKO_REQUEST_CHUNKS:
-                            coingecko_requests_made = 0
-                            time.sleep(COIN_GECKO_THROTTLE_TIME)
-                        else:
-                            time.sleep(1)
+                    coingecko_requests_made += 1
+                    #self-throttling to stay under CoinGecko throttle limits
+                    if coingecko_requests_made == COIN_GECKO_REQUEST_CHUNKS:
+                        coingecko_requests_made = 0
+                        time.sleep(COIN_GECKO_THROTTLE_TIME)
+                    else:
+                        time.sleep(1)
                 else:
                     print("Your CoinGecko symbol config list does not support symbol", symbol)
 
