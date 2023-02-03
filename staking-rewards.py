@@ -17,7 +17,7 @@ COIN_GECKO_HISTORICAL_ENDPOINT = "/<coin-id>/history"
 
 #this represents CoinGecko's 50 requests/minute API rate limit, plus some seconds for variance
 COIN_GECKO_REQUEST_CHUNKS = 9
-COIN_GECKO_THROTTLE_TIME = 70
+COIN_GECKO_THROTTLE_TIME = 61
 
 #this represents throttling for Coinhall, which will throttle after every single request
 COINHALL_THROTTLE_TIME = 10
@@ -103,7 +103,7 @@ def iter_worksheet(worksheet):
 
 def get_key_data_point_indexes(rows, dateColumn, yearFilter):
     print("Gathering key data points for classifications", KEY_CLASSIFICATIONS)
-    return [index for index, row in enumerate(rows) if "classification" in row and row["classification"] in KEY_CLASSIFICATIONS and row[dateColumn].year == yearFilter]
+    return [index for index, row in enumerate(rows) if "classification" in row and row["classification"] in KEY_CLASSIFICATIONS and row[dateColumn].year == yearFilter and row["boughtCurrency"]]
 
 def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, coinhall_symbols_to_id_configs, date_column, symbolColumn, valueColumn, simplified_rows_headers, coingecko_cache, coingecko_cache_file):
 
@@ -150,48 +150,74 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
     for symbol in symbols_to_dates_to_costs:
         for date in symbols_to_dates_to_costs[symbol]:
             del symbols_to_dates_to_rows[symbol][date]
-        if len(symbols_to_dates_to_rows[symbol].keys()) == 0:
-            del symbols_to_dates_to_rows[symbol]
+        # if len(symbols_to_dates_to_rows[symbol].keys()) == 0:
+        #     del symbols_to_dates_to_rows[symbol]
     
     #loop through chunks of data and send to API for processing
     print("Reaching out to CoinGecko for symbol cost data, this may take a while...")
 
-    try:
-        for chunk in chunk_symbols_and_dates(symbols_to_dates_to_rows, COIN_GECKO_REQUEST_CHUNKS):
-            for symbol in chunk:
+    coingecko_requests_made = 0
+    for symbol in symbols_to_dates_to_rows:
 
-                request_url = get_coingecko_request_url(symbol, coingecko_symbols_to_id_configs)
-                
-                if symbol not in symbols_to_dates_to_costs:
-                    symbols_to_dates_to_costs[symbol] = {}
-                
-                for date in chunk[symbol]:
-                    #check cache first for newly cached items
-                    if symbol in coingecko_cache and date in coingecko_cache[symbol]:
-                        symbols_to_dates_to_costs[symbol][date] = coingecko_cache[symbol][date]
-                    else:
-                        symbols_to_dates_to_costs[symbol][date] = None
+        if symbol not in symbols_to_dates_to_costs:
+                symbols_to_dates_to_costs[symbol] = {}
 
-                        if request_url:
-                            parameterized_url = add_coingecko_request_params(request_url, date)
+        request_url = get_coingecko_request_url(symbol, coingecko_symbols_to_id_configs)
 
-                            resp = make_coingecko_api_request(parameterized_url, "Error reaching out to CoinGecko, please try again later:", COIN_GECKO_THROTTLE_TIME)
+        for date in symbols_to_dates_to_rows[symbol]:
+            if symbol in coingecko_cache and date in coingecko_cache[symbol]:
+                symbols_to_dates_to_costs[symbol][date] = coingecko_cache[symbol][date]
+                continue
+            else:
+                symbols_to_dates_to_costs[symbol][date] = None
+                if request_url:
+                    parameterized_url = add_coingecko_request_params(request_url, date)
+                    resp = requests.get(parameterized_url)
 
-                            symbols_to_dates_to_costs[symbol][date] = resp.json()["market_data"]["current_price"]["usd"]
-                            if symbol in coingecko_cache:
-                                coingecko_cache[symbol][date] = symbols_to_dates_to_costs[symbol][date]
-                            else:
-                                coingecko_cache[symbol] = {}
-                                coingecko_cache[symbol][date] = symbols_to_dates_to_costs[symbol][date]
-                            #If error handling improves, probably can remove this. Leaving it here for sanity's sake for now
-                            write_coingecko_cache(coingecko_cache, coingecko_cache_file)
+                    try:
+                        resp.raise_for_status()
+                    except Exception as err:
+                        if resp.status_code == 429:
+                            print("A CoinGecko API throttle error occurred, self-throttling and trying again")
+                            time.sleep(COIN_GECKO_THROTTLE_TIME)
+                            resp = requests.get(parameterized_url)
+                            coingecko_requests_made = 1
+
+                            #give up after 1 retry
+                            try:
+                                resp.raise_for_status()
+                            except Exception as err:
+                                write_coingecko_cache(coingecko_cache, coingecko_cache_file)
+                                print("CoinGecko API call failed", err)
+                                raise err
                         else:
-                            print("Your CoinGecko symbol config list does not support symbol", symbol)
-                    
-            time.sleep(COIN_GECKO_THROTTLE_TIME)
-    except Exception as err:
-        write_coingecko_cache(coingecko_cache, coingecko_cache_file)
-        raise err
+                            write_coingecko_cache(coingecko_cache, coingecko_cache_file)
+                            print("CoinGecko API call failed", err)
+                            raise err
+                    else:
+                        
+                        #safely get a None value if the json structure is not found in response
+                        #this was found during testing of some symbols where they store data but not the USD cost on that date
+                        symbol_date_cost = resp.json().get("market_data", {}).get("current_price", {}).get("usd")
+                        symbols_to_dates_to_costs[symbol][date] = symbol_date_cost
+
+                        if symbol in coingecko_cache:
+                            coingecko_cache[symbol][date] = symbols_to_dates_to_costs[symbol][date]
+                        else:
+                            coingecko_cache[symbol] = {}
+                            coingecko_cache[symbol][date] = symbols_to_dates_to_costs[symbol][date]
+
+                        write_coingecko_cache(coingecko_cache, coingecko_cache_file)
+
+                        coingecko_requests_made += 1
+                        #self-throttling to stay under CoinGecko throttle limits
+                        if coingecko_requests_made == COIN_GECKO_REQUEST_CHUNKS:
+                            coingecko_requests_made = 0
+                            time.sleep(COIN_GECKO_THROTTLE_TIME)
+                        else:
+                            time.sleep(1)
+                else:
+                    print("Your CoinGecko symbol config list does not support symbol", symbol)
 
     write_coingecko_cache(coingecko_cache, coingecko_cache_file)
     print("Finished reaching out to CoinGecko")
@@ -307,42 +333,6 @@ def get_coingecko_request_url(symbol, coingecko_symbols_to_id_configs):
 
 def add_coingecko_request_params(request_url, date):
     return request_url + f"?date={date}"
-
-def make_coingecko_api_request(request_url, error_string, throttle_time):
-    resp = requests.get(request_url)
-    try:
-        resp.raise_for_status()
-    except requests.HTTPError as err:
-        #if throttled, wait for the throttle to end and retry
-        if resp.status_code == 429:
-            print("A CoinGecko API throttle error occurred, self-throttling and trying again")
-            time.sleep(throttle_time)
-            resp = requests.get(request_url)
-
-            #give up after 1 retry
-            try:
-                resp.raise_for_status()
-            except Exception as err:
-                print(error_string, err)
-                raise err
-        else:
-            print("An uncaught CoinGecko API error occurred, trying again in a few seconds")
-            print(err)
-            time.sleep(10)
-            resp = requests.get(request_url)
-
-            #give up after 1 retry
-            try:
-                resp.raise_for_status()
-                print("Made it past the error, continuing...")
-            except Exception as err:
-                print(error_string, err)
-                raise err
-    except Exception as err:
-        print(error_string, err)
-        #raise here so we can at least cache what we have recieved so far in the caller
-        raise err
-    return resp
 
 def get_coinhall_request_url(symbol, coinhall_symbols_to_id_configs):
     coinhall_request_url = None
