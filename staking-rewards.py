@@ -30,21 +30,32 @@ KEY_CLASSIFICATIONS = ["staked", "airdrop"]
 class CaughtError(Exception):
     pass
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Get the cost-basis in USD (from CoinGecko) for your staking and airdrop rewards from Accointing export data')
-    parser.add_argument('--input-file', '-i', help='The location of your Accointing input file', required=True)
-    parser.add_argument('--output-file', '-o', help='The location of your output file', required=True)
-    parser.add_argument('--coingecko-symbol-to-id-file', '-cgstoid', help='The location of your CoinGecko JSON config file that stores symbols to ID configurations for making API requests', required=True)
-    parser.add_argument('--coinhall-symbol-to-id-file', '-chstoid', help='The location of your CoinHall JSON config file that stores symbols to ID configurations for making API requests', required=True)
-    parser.add_argument('--symbol-column', '-sc', help='The column in the EXCEL that stores the symbol of interest', default="boughtCurrency")
-    parser.add_argument('--value-column', '-vc', help='The column in the EXCEL that stores the symbol of interest', default="boughtQuantity")
-    parser.add_argument('--date-column', '-dc', help='The column in the EXCEL that stores the symbol of interest', default="timeExecuted")
-    parser.add_argument('--year-filter', '-yf', help='The year to gather data for', default=2022, type=int)
-    parser.add_argument('--coingecko-cache', '-cg-c', help='The JSON file holding cached data from CoinGecko (used in subsequent runs)', default="./.coingecko_cache.json", type=str)
+def parse_args(process_function, import_symbol_function):
+    parser = argparse.ArgumentParser(description='A command line tool to process CSV/XLSX files of Crypto Symbols and amounts and gather USD value')
+    subparser = parser.add_subparsers()
+
+    parser_process_file = subparser.add_parser("process")
+    parser_process_file.add_argument('--input-file', '-i', help='The location of your Accointing input file', required=True)
+    parser_process_file.add_argument('--output-file', '-o', help='The location of your output file', required=True)
+    parser_process_file.add_argument('--coingecko-symbol-to-id-file', '-cgstoid', help='The location of your CoinGecko JSON config file that stores symbols to ID configurations for making API requests', required=True)
+    parser_process_file.add_argument('--coinhall-symbol-to-id-file', '-chstoid', help='The location of your CoinHall JSON config file that stores symbols to ID configurations for making API requests', required=True)
+    parser_process_file.add_argument('--symbol-column', '-sc', help='The column in the EXCEL that stores the symbol of interest', default="boughtCurrency")
+    parser_process_file.add_argument('--value-column', '-vc', help='The column in the EXCEL that stores the symbol of interest', default="boughtQuantity")
+    parser_process_file.add_argument('--date-column', '-dc', help='The column in the EXCEL that stores the symbol of interest', default="timeExecuted")
+    parser_process_file.add_argument('--year-filter', '-yf', help='The year to gather data for', default=2022, type=int)
+    parser_process_file.add_argument('--coingecko-cache', '-cg-c', help='The JSON file holding cached data from CoinGecko (used in subsequent runs)', default="./.coingecko_cache.json", type=str)
+    parser_process_file.set_defaults(func=process_function)
+
+    parser_import_symbol = subparser.add_parser("import-symbol")
+    parser_import_symbol.set_defaults(func=import_symbol_function)
+    parser_import_symbol.add_argument('symbol', help='The symbol to import. Options will be chosen that closely match this symbol and the CoinGecko IDs will be saved to your configuration file.')
+    parser_import_symbol.add_argument("--type", choices=["coingecko"], help='The config file type, used to gather ID lists for giving choices.', required=True)
+    parser_import_symbol.add_argument('--config-file', '-cf', help='The location of your JSON config file that stores symbols to ID configurations for making API requests', required=True)
+
     args = parser.parse_args()
     return args
 
-def validate_args(args):
+def validate_process_args(args):
     if not exists(args.input_file):
         raise CaughtError(f"No file exists at {args.input_file} for the input data file, please enter a correct filepath")
 
@@ -58,6 +69,10 @@ def validate_args(args):
     
     if not exists(args.coinhall_symbol_to_id_file):
         raise CaughtError(f"No file exists at {args.coinhall_symbol_to_id_file} for the Coinhall symbol to id configuration file, please enter a correct filepath")
+
+def validate_import_symbol_args(args):
+    if not exists(args.config_file):
+        raise CaughtError(f"No file exists at {args.config_file} for the config data file, please enter a correct filepath")
 
 def get_coingecko_cache(coingecko_cache_file):
     if not exists(coingecko_cache_file):
@@ -402,9 +417,9 @@ def output_rows(title, headers, rows, fname, sum_header=None):
 
     wb.save(fname)
 
-def main():
-    args = parse_args()
-    validate_args(args)
+def process(args):
+
+    validate_process_args(args)
 
     coingecko_cache = get_coingecko_cache(args.coingecko_cache)
 
@@ -458,6 +473,13 @@ def main():
     simplified_rows_headers.append("comment")
     output_rows(title, headers, rows, args.output_file)
     output_rows(title, simplified_rows_headers, simplified_rows, args.output_file + "-simplified.xlsx", sum_header="usdValue")
+
+def import_symbol(args):
+    validate_import_symbol_args(args)
+
+def main():
+    args = parse_args(process, import_symbol)
+    args.func(args)
 
 if __name__ == "__main__":
     try:
