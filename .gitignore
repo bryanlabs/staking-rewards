@@ -5,3 +5,6 @@ test*
 venv
 coingecko_coins.json
 history*.xlsx
+coingecko_cache.json
+out.csv
+out.csv-simplified.xlsx
