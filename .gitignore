@@ -1,3 +1,7 @@
 env
 temp*
 test*
+.coingecko_cache.json
+venv
+coingecko_coins.json
+history*.xlsx

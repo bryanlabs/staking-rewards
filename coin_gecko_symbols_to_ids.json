@@ -138,5 +138,20 @@
         "symbol": "vdl",
         "id": "vidulum",
         "name": "Vidulum"
+    },
+    "LUNC": {
+        "id": "terra-luna",
+        "symbol": "lunc",
+        "name": "Terra Luna Classic"
+    },
+    "BOOT": {
+        "id": "bostrom",
+        "symbol": "boot",
+        "name": "Bostrom"
+    },
+    "USTC": {
+        "id": "terrausd",
+        "symbol": "ustc",
+        "name": "TerraClassicUSD"
     }
 }
