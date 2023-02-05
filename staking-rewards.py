@@ -11,6 +11,7 @@ from openpyxl.utils import get_column_letter
 import datetime
 import traceback
 import pydoc
+import csv
 
 COIN_GECKO_API_URL = "https://api.coingecko.com/api/v3"
 COIN_GECKO_COINS_ENDPOINT = "/coins"
@@ -38,7 +39,8 @@ def parse_args(process_function, import_symbol_function):
 
     parser_process_file = subparser.add_parser("process")
     parser_process_file.add_argument('--input-file', '-i', help='The location of your Accointing input file', required=True)
-    parser_process_file.add_argument('--output-file', '-o', help='The location of your output file', required=True)
+    parser_process_file.add_argument('--output-file', '-o', help='The location to output your data to', required=True)
+    parser_process_file.add_argument('--output-format', '-o-form', help='The output format to be used, either csv or xlsx. Defaults to csv.', default="csv", const="csv", choices=["csv", "xlsx"], nargs="?")
     parser_process_file.add_argument('--coingecko-symbol-to-id-file', '-cgstoid', help='The location of your CoinGecko JSON config file that stores symbols to ID configurations for making API requests', required=True)
     parser_process_file.add_argument('--coinhall-symbol-to-id-file', '-chstoid', help='The location of your CoinHall JSON config file that stores symbols to ID configurations for making API requests', required=True)
     parser_process_file.add_argument('--symbol-column', '-sc', help='The column in the EXCEL that stores the symbol of interest', default="boughtCurrency")
@@ -391,36 +393,51 @@ def make_coinhall_api_request(request_url, error_string, throttle_time):
         print(error_string, err)
         sys.exit(1)
 
-def output_rows(title, headers, rows, fname, sum_header=None):
-    print("Creating new Excel file", fname)
-    wb = Workbook()
-    ws1 = wb.active
-    ws1.title = title
+def output_rows(title, headers, rows, fname, format, sum_header=None):
+    if format == "xlsx":
+        print("Creating new Excel file", fname)
+        wb = Workbook()
+        ws1 = wb.active
+        ws1.title = title
 
-    ws1.append(headers)
+        ws1.append(headers)
 
-    for row in rows:
-        data = []
-        for header in headers:
-            if header in row:
-                data.append(row[header])
-            else:
-                data.append(None)
-        ws1.append(data)
+        for row in rows:
+            data = []
+            for header in headers:
+                if header in row:
+                    data.append(row[header])
+                else:
+                    data.append(None)
+            ws1.append(data)
 
-    if sum_header and sum_header in headers:
-        index = headers.index(sum_header) + 1
-        column = get_column_letter(index)
+        if sum_header and sum_header in headers:
+            index = headers.index(sum_header) + 1
+            column = get_column_letter(index)
 
-        first_row = column + "2"
-        last_row = column + str(len(ws1[column]))
+            first_row = column + "2"
+            last_row = column + str(len(ws1[column]))
 
-        sum_formula = f"= SUM({first_row}:{last_row})"
+            sum_formula = f"= SUM({first_row}:{last_row})"
 
-        sum_formula_cell = column + str(len(ws1[column]) + 1)
-        ws1[sum_formula_cell] = sum_formula
+            sum_formula_cell = column + str(len(ws1[column]) + 1)
+            ws1[sum_formula_cell] = sum_formula
 
-    wb.save(fname)
+        wb.save(fname)
+
+    elif format == "csv":
+        print(f"Creating new CSV file {fname}")
+        with open(fname, 'w') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(headers)
+            for row in rows:
+                data = []
+                for header in headers:
+                    if header in row:
+                        data.append(row[header])
+                    else:
+                        data.append("")
+                csvwriter.writerow(data)
 
 def process(args):
 
@@ -476,8 +493,8 @@ def process(args):
     rows, simplified_rows = process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, coinhall_symbols_to_id_configs, args.date_column, args.symbol_column, args.value_column, simplified_rows_headers, coingecko_cache, args.coingecko_cache)
     headers.append("usdValue")
     simplified_rows_headers.append("comment")
-    output_rows(title, headers, rows, args.output_file)
-    output_rows(title, simplified_rows_headers, simplified_rows, args.output_file + "-simplified.xlsx", sum_header="usdValue")
+    output_rows(title, headers, rows, args.output_file, args.output_format)
+    output_rows(title, simplified_rows_headers, simplified_rows, args.output_file + f"-simplified.{args.output_format}", args.output_format, sum_header="usdValue")
 
 def import_symbol_coingecko_worker(symbol, config_file):
     print(f"Searching CoinGecko for symbol {symbol}")
