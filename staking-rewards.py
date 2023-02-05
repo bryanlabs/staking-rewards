@@ -482,6 +482,7 @@ def process(args):
 def import_symbol_coingecko_worker(symbol, config_file):
     print(f"Searching CoinGecko for symbol {symbol}")
 
+    #TODO: Cache this as well for later use? Would want to stat the config file and reload the list if its pretty old
     resp = requests.get(COIN_GECKO_API_URL + COIN_GECKO_COINS_ENDPOINT + COIN_GECKO_COINS_LIST_ENDPOINT)
     try:
         resp.raise_for_status()
@@ -507,14 +508,17 @@ def import_symbol_coingecko_worker(symbol, config_file):
         dist = levenshtein_dist_dp(symbol.lower(), possible_option["symbol"])
         possible_option_ranks.append((possible_option, dist))
     
+    #sort by rank
     possible_option_ranks = sorted(possible_option_ranks, key=lambda possible_option: possible_option[1])
 
+    #build user input information string
     dump_string = "These are the possible options (press 'q' to continue):\n\n"
     for idx, option in enumerate(possible_option_ranks):
         possible_option = option[0]
         dump_string += f"{idx + 1}: {possible_option['name']}\n\tSymbol: {possible_option['symbol']}\n\tID: {possible_option['id']}\n"
 
     while(True):
+        #paging output like the Linux less command
         pydoc.pager(dump_string)
 
         answer = input("Which option would you like to choose? (input the number or type 'ls' to show again) >> ")
@@ -580,11 +584,13 @@ def import_symbol(args):
 
     config_file = args.config_file
 
+    #TODO: Add coinhall?
     if api_type == "coingecko":
         import_symbol_coingecko_worker(symbol, config_file)
             
 #Pulled from https://github.com/pharr117/levenshtein_dist 
 #A general string comparison algorithm: given a source string and a target string, calculates the distance between them
+#Returns a rank, the lower the rank the closer the words match.
 def levenshtein_dist_dp(source, target):
 
     len_source = len(source)
