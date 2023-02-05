@@ -516,7 +516,15 @@ def import_symbol_coingecko_worker(symbol, config_file):
     for symbol_config in data:
         if symbol in symbol_config["symbol"] or symbol.lower() in symbol_config["symbol"]:
             possible_options.append(symbol_config)
+
+    if len(possible_options) == 0:
+        print(f"No options found that match symbol {symbol}")
+        print("If this sounds like an error, you can try manually looking through the JSON file provided by CoinGecko at:")
+        print(COIN_GECKO_API_URL + COIN_GECKO_COINS_ENDPOINT + COIN_GECKO_COINS_LIST_ENDPOINT)
+        return
+    
     print(f"Found {len(possible_options)} possible options for symbol {symbol}")
+
     print("Ranking them by least likely to most likely, this may take a second...")
 
     #Rank possible options from least likely to most likely
