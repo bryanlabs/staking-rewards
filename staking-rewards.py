@@ -10,10 +10,12 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 import datetime
 import traceback
+import pydoc
 
 COIN_GECKO_API_URL = "https://api.coingecko.com/api/v3"
 COIN_GECKO_COINS_ENDPOINT = "/coins"
 COIN_GECKO_HISTORICAL_ENDPOINT = "/<coin-id>/history"
+COIN_GECKO_COINS_LIST_ENDPOINT = "/list"
 
 #this represents CoinGecko's 50 requests/minute API rate limit, plus some seconds for variance
 COIN_GECKO_REQUEST_CHUNKS = 9
@@ -90,6 +92,9 @@ def write_coingecko_cache(data, coingecko_cache_file):
 
 def load_config_file(fname):
     return json.load(open(fname))
+
+def save_config_file(fname, config_value):
+    return json.dump(config_value, open(fname, 'w'), indent=4)
 
 def parse_input_data(fname):
     print("Loading data from Excel file")
@@ -474,8 +479,133 @@ def process(args):
     output_rows(title, headers, rows, args.output_file)
     output_rows(title, simplified_rows_headers, simplified_rows, args.output_file + "-simplified.xlsx", sum_header="usdValue")
 
+def import_symbol_coingecko_worker(symbol, config_file):
+    print(f"Searching CoinGecko for symbol {symbol}")
+
+    resp = requests.get(COIN_GECKO_API_URL + COIN_GECKO_COINS_ENDPOINT + COIN_GECKO_COINS_LIST_ENDPOINT)
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as err:
+        print(err)
+        raise CaughtError("Error reaching out to CoinGecko API List endpoint, please try again in a minute or two.")
+    except Exception as err:
+        raise err
+
+    data = resp.json()
+
+    possible_options = []
+    #basic O(n*m) string search, super slow
+    for symbol_config in data:
+        if symbol in symbol_config["symbol"] or symbol.lower() in symbol_config["symbol"]:
+            possible_options.append(symbol_config)
+    print(f"Found {len(possible_options)} possible options for symbol {symbol}")
+    print("Ranking them by least likely to most likely, this may take a second...")
+
+    #Rank possible options from least likely to most likely
+    possible_option_ranks = []
+    for possible_option in possible_options:
+        dist = levenshtein_dist_dp(symbol.lower(), possible_option["symbol"])
+        possible_option_ranks.append((possible_option, dist))
+    
+    possible_option_ranks = sorted(possible_option_ranks, key=lambda possible_option: possible_option[1])
+
+    dump_string = "These are the possible options (press 'q' to continue):\n\n"
+    for idx, option in enumerate(possible_option_ranks):
+        possible_option = option[0]
+        dump_string += f"{idx + 1}: {possible_option['name']}\n\tSymbol: {possible_option['symbol']}\n\tID: {possible_option['id']}\n"
+
+    while(True):
+        pydoc.pager(dump_string)
+
+        answer = input("Which option would you like to choose? (input the number or type 'ls' to show again) >> ")
+
+        if answer == "ls":
+            continue
+        else:
+            while True:
+                try:
+                    val = int(answer)
+                    if val - 1 < 0:
+                        raise IndexError
+                    chosen = possible_option_ranks[val - 1][0]
+                    break
+                except ValueError:
+                    answer = input("Please enter an integer value >> ")
+                    continue
+                except IndexError:
+                    answer = input(f"{answer} is not a valid option in the list, please choose again >> ")
+
+        print("You have chosen the following option:")
+        print(f"{val}: {chosen['name']}\n\tSymbol: {chosen['symbol']}\n\tID: {chosen['id']}")
+        done = False
+        while True:
+            answer = input("Is this correct? (y/n) >> ")
+            if answer == "y":
+                done = True
+                break
+            elif answer == "n":
+                break
+            else:
+                print("Please type y/n")
+        if done:
+            break
+    
+    print(f"Saving the config {json.dumps(chosen)} into your symbol to IDs config file '{config_file}' at key {symbol}")
+
+    current_config = load_config_file(config_file)
+
+    #ask before overwrite
+    if symbol in current_config:
+        print(f"Your config file already contains an entry for symbol {symbol} as {current_config[symbol]}")
+        while(True):
+            answer = input("Would you like to overwrite this entry? (y/n) >> ")
+            if answer == "y" or answer == "n":
+                break
+        if answer == "n":
+            print("Exiting...")
+            return
+        else:
+            print("Overwriting...")
+
+    current_config[symbol] = chosen
+
+    save_config_file(config_file, current_config)
+    print("Done!")
+
 def import_symbol(args):
     validate_import_symbol_args(args)
+
+    symbol = args.symbol
+    api_type = args.type
+
+    config_file = args.config_file
+
+    if api_type == "coingecko":
+        import_symbol_coingecko_worker(symbol, config_file)
+            
+#Pulled from https://github.com/pharr117/levenshtein_dist 
+#A general string comparison algorithm: given a source string and a target string, calculates the distance between them
+def levenshtein_dist_dp(source, target):
+
+    len_source = len(source)
+    len_target = len(target)
+    matrix = [[None for j in range(len_target+1)] for i in range(len_source+1)]
+
+    for i in range(len_source + 1):
+        for j in range(len_target+1):
+            if i == 0:
+                matrix[i][j] = j
+            elif j == 0:
+                matrix[i][j] = i
+            else:
+                if source[i-1] == target[j-1]:
+                    matrix[i][j] = matrix[i-1][j-1]
+                else:
+                    matrix[i][j] = 1 + min(matrix[i][j-1],
+                                           matrix[i-1][j],
+                                           matrix[i-1][j-1])
+
+    return matrix[len_source][len_target]
 
 def main():
     args = parse_args(process, import_symbol)
