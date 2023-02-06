@@ -153,5 +153,10 @@
         "id": "terrausd",
         "symbol": "ustc",
         "name": "TerraClassicUSD"
+    },
+    "ETH": {
+        "id": "ethereum",
+        "symbol": "eth",
+        "name": "Ethereum"
     }
 }

@@ -10,10 +10,13 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 import datetime
 import traceback
+import pydoc
+import csv
 
 COIN_GECKO_API_URL = "https://api.coingecko.com/api/v3"
 COIN_GECKO_COINS_ENDPOINT = "/coins"
 COIN_GECKO_HISTORICAL_ENDPOINT = "/<coin-id>/history"
+COIN_GECKO_COINS_LIST_ENDPOINT = "/list"
 
 #this represents CoinGecko's 50 requests/minute API rate limit, plus some seconds for variance
 COIN_GECKO_REQUEST_CHUNKS = 9
@@ -30,21 +33,33 @@ KEY_CLASSIFICATIONS = ["staked", "airdrop"]
 class CaughtError(Exception):
     pass
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Get the cost-basis in USD (from CoinGecko) for your staking and airdrop rewards from Accointing export data')
-    parser.add_argument('--input-file', '-i', help='The location of your Accointing input file', required=True)
-    parser.add_argument('--output-file', '-o', help='The location of your output file', required=True)
-    parser.add_argument('--coingecko-symbol-to-id-file', '-cgstoid', help='The location of your CoinGecko JSON config file that stores symbols to ID configurations for making API requests', required=True)
-    parser.add_argument('--coinhall-symbol-to-id-file', '-chstoid', help='The location of your CoinHall JSON config file that stores symbols to ID configurations for making API requests', required=True)
-    parser.add_argument('--symbol-column', '-sc', help='The column in the EXCEL that stores the symbol of interest', default="boughtCurrency")
-    parser.add_argument('--value-column', '-vc', help='The column in the EXCEL that stores the symbol of interest', default="boughtQuantity")
-    parser.add_argument('--date-column', '-dc', help='The column in the EXCEL that stores the symbol of interest', default="timeExecuted")
-    parser.add_argument('--year-filter', '-yf', help='The year to gather data for', default=2022, type=int)
-    parser.add_argument('--coingecko-cache', '-cg-c', help='The JSON file holding cached data from CoinGecko (used in subsequent runs)', default="./.coingecko_cache.json", type=str)
+def parse_args(process_function, import_symbol_function):
+    parser = argparse.ArgumentParser(description='A command line tool to process CSV/XLSX files of Crypto Symbols and amounts and gather USD value')
+    subparser = parser.add_subparsers()
+
+    parser_process_file = subparser.add_parser("process")
+    parser_process_file.add_argument('--input-file', '-i', help='The location of your Accointing input file', required=True)
+    parser_process_file.add_argument('--output-file', '-o', help='The location to output your data to', required=True)
+    parser_process_file.add_argument('--output-format', '-o-form', help='The output format to be used, either csv or xlsx. Defaults to csv.', default="csv", const="csv", choices=["csv", "xlsx"], nargs="?")
+    parser_process_file.add_argument('--coingecko-symbol-to-id-file', '-cgstoid', help='The location of your CoinGecko JSON config file that stores symbols to ID configurations for making API requests', required=True)
+    parser_process_file.add_argument('--coinhall-symbol-to-id-file', '-chstoid', help='The location of your CoinHall JSON config file that stores symbols to ID configurations for making API requests', required=True)
+    parser_process_file.add_argument('--symbol-column', '-sc', help='The column in the EXCEL that stores the symbol of interest', default="boughtCurrency")
+    parser_process_file.add_argument('--value-column', '-vc', help='The column in the EXCEL that stores the symbol of interest', default="boughtQuantity")
+    parser_process_file.add_argument('--date-column', '-dc', help='The column in the EXCEL that stores the symbol of interest', default="timeExecuted")
+    parser_process_file.add_argument('--year-filter', '-yf', help='The year to gather data for', default=2022, type=int)
+    parser_process_file.add_argument('--coingecko-cache', '-cg-c', help='The JSON file holding cached data from CoinGecko (used in subsequent runs)', default="./.coingecko_cache.json", type=str)
+    parser_process_file.set_defaults(func=process_function)
+
+    parser_import_symbol = subparser.add_parser("import-symbol")
+    parser_import_symbol.set_defaults(func=import_symbol_function)
+    parser_import_symbol.add_argument('symbol', help='The symbol to import. Options will be chosen that closely match this symbol and the CoinGecko IDs will be saved to your configuration file.')
+    parser_import_symbol.add_argument("--type", choices=["coingecko"], help='The config file type, used to gather ID lists for giving choices.', required=True)
+    parser_import_symbol.add_argument('--config-file', '-cf', help='The location of your JSON config file that stores symbols to ID configurations for making API requests', required=True)
+
     args = parser.parse_args()
     return args
 
-def validate_args(args):
+def validate_process_args(args):
     if not exists(args.input_file):
         raise CaughtError(f"No file exists at {args.input_file} for the input data file, please enter a correct filepath")
 
@@ -58,6 +73,10 @@ def validate_args(args):
     
     if not exists(args.coinhall_symbol_to_id_file):
         raise CaughtError(f"No file exists at {args.coinhall_symbol_to_id_file} for the Coinhall symbol to id configuration file, please enter a correct filepath")
+
+def validate_import_symbol_args(args):
+    if not exists(args.config_file):
+        raise CaughtError(f"No file exists at {args.config_file} for the config data file, please enter a correct filepath")
 
 def get_coingecko_cache(coingecko_cache_file):
     if not exists(coingecko_cache_file):
@@ -75,6 +94,9 @@ def write_coingecko_cache(data, coingecko_cache_file):
 
 def load_config_file(fname):
     return json.load(open(fname))
+
+def save_config_file(fname, config_value):
+    return json.dump(config_value, open(fname, 'w'), indent=4)
 
 def parse_input_data(fname):
     print("Loading data from Excel file")
@@ -371,40 +393,55 @@ def make_coinhall_api_request(request_url, error_string, throttle_time):
         print(error_string, err)
         sys.exit(1)
 
-def output_rows(title, headers, rows, fname, sum_header=None):
-    print("Creating new Excel file", fname)
-    wb = Workbook()
-    ws1 = wb.active
-    ws1.title = title
+def output_rows(title, headers, rows, fname, format, sum_header=None):
+    if format == "xlsx":
+        print("Creating new Excel file", fname)
+        wb = Workbook()
+        ws1 = wb.active
+        ws1.title = title
 
-    ws1.append(headers)
+        ws1.append(headers)
 
-    for row in rows:
-        data = []
-        for header in headers:
-            if header in row:
-                data.append(row[header])
-            else:
-                data.append(None)
-        ws1.append(data)
+        for row in rows:
+            data = []
+            for header in headers:
+                if header in row:
+                    data.append(row[header])
+                else:
+                    data.append(None)
+            ws1.append(data)
 
-    if sum_header and sum_header in headers:
-        index = headers.index(sum_header) + 1
-        column = get_column_letter(index)
+        if sum_header and sum_header in headers:
+            index = headers.index(sum_header) + 1
+            column = get_column_letter(index)
 
-        first_row = column + "2"
-        last_row = column + str(len(ws1[column]))
+            first_row = column + "2"
+            last_row = column + str(len(ws1[column]))
 
-        sum_formula = f"= SUM({first_row}:{last_row})"
+            sum_formula = f"= SUM({first_row}:{last_row})"
 
-        sum_formula_cell = column + str(len(ws1[column]) + 1)
-        ws1[sum_formula_cell] = sum_formula
+            sum_formula_cell = column + str(len(ws1[column]) + 1)
+            ws1[sum_formula_cell] = sum_formula
 
-    wb.save(fname)
+        wb.save(fname)
 
-def main():
-    args = parse_args()
-    validate_args(args)
+    elif format == "csv":
+        print(f"Creating new CSV file {fname}")
+        with open(fname, 'w') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(headers)
+            for row in rows:
+                data = []
+                for header in headers:
+                    if header in row:
+                        data.append(row[header])
+                    else:
+                        data.append("")
+                csvwriter.writerow(data)
+
+def process(args):
+
+    validate_process_args(args)
 
     coingecko_cache = get_coingecko_cache(args.coingecko_cache)
 
@@ -456,8 +493,154 @@ def main():
     rows, simplified_rows = process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, coinhall_symbols_to_id_configs, args.date_column, args.symbol_column, args.value_column, simplified_rows_headers, coingecko_cache, args.coingecko_cache)
     headers.append("usdValue")
     simplified_rows_headers.append("comment")
-    output_rows(title, headers, rows, args.output_file)
-    output_rows(title, simplified_rows_headers, simplified_rows, args.output_file + "-simplified.xlsx", sum_header="usdValue")
+    output_rows(title, headers, rows, args.output_file, args.output_format)
+    output_rows(title, simplified_rows_headers, simplified_rows, args.output_file + f"-simplified.{args.output_format}", args.output_format, sum_header="usdValue")
+
+def import_symbol_coingecko_worker(symbol, config_file):
+    print(f"Searching CoinGecko for symbol {symbol}")
+
+    #TODO: Cache this as well for later use? Would want to stat the config file and reload the list if its pretty old
+    resp = requests.get(COIN_GECKO_API_URL + COIN_GECKO_COINS_ENDPOINT + COIN_GECKO_COINS_LIST_ENDPOINT)
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as err:
+        print(err)
+        raise CaughtError("Error reaching out to CoinGecko API List endpoint, please try again in a minute or two.")
+    except Exception as err:
+        raise err
+
+    data = resp.json()
+
+    possible_options = []
+    #basic O(n*m) string search, super slow
+    for symbol_config in data:
+        if symbol in symbol_config["symbol"] or symbol.lower() in symbol_config["symbol"]:
+            possible_options.append(symbol_config)
+
+    if len(possible_options) == 0:
+        print(f"No options found that match symbol {symbol}")
+        print("If this sounds like an error, you can try manually looking through the JSON file provided by CoinGecko at:")
+        print(COIN_GECKO_API_URL + COIN_GECKO_COINS_ENDPOINT + COIN_GECKO_COINS_LIST_ENDPOINT)
+        return
+    
+    print(f"Found {len(possible_options)} possible options for symbol {symbol}")
+
+    print("Ranking them by least likely to most likely, this may take a second...")
+
+    #Rank possible options from least likely to most likely
+    possible_option_ranks = []
+    for possible_option in possible_options:
+        dist = levenshtein_dist_dp(symbol.lower(), possible_option["symbol"])
+        possible_option_ranks.append((possible_option, dist))
+    
+    #sort by rank
+    possible_option_ranks = sorted(possible_option_ranks, key=lambda possible_option: possible_option[1])
+
+    #build user input information string
+    dump_string = "These are the possible options (press 'q' to continue):\n\n"
+    for idx, option in enumerate(possible_option_ranks):
+        possible_option = option[0]
+        dump_string += f"{idx + 1}: {possible_option['name']}\n\tSymbol: {possible_option['symbol']}\n\tID: {possible_option['id']}\n"
+
+    while(True):
+        #paging output like the Linux less command
+        pydoc.pager(dump_string)
+
+        answer = input("Which option would you like to choose? (input the number or type 'ls' to show again) >> ")
+
+        if answer == "ls":
+            continue
+        else:
+            while True:
+                try:
+                    val = int(answer)
+                    if val - 1 < 0:
+                        raise IndexError
+                    chosen = possible_option_ranks[val - 1][0]
+                    break
+                except ValueError:
+                    answer = input("Please enter an integer value >> ")
+                    continue
+                except IndexError:
+                    answer = input(f"{answer} is not a valid option in the list, please choose again >> ")
+
+        print("You have chosen the following option:")
+        print(f"{val}: {chosen['name']}\n\tSymbol: {chosen['symbol']}\n\tID: {chosen['id']}")
+        done = False
+        while True:
+            answer = input("Is this correct? (y/n) >> ")
+            if answer == "y":
+                done = True
+                break
+            elif answer == "n":
+                break
+            else:
+                print("Please type y/n")
+        if done:
+            break
+    
+    print(f"Saving the config {json.dumps(chosen)} into your symbol to IDs config file '{config_file}' at key {symbol}")
+
+    current_config = load_config_file(config_file)
+
+    #ask before overwrite
+    if symbol in current_config:
+        print(f"Your config file already contains an entry for symbol {symbol} as {current_config[symbol]}")
+        while(True):
+            answer = input("Would you like to overwrite this entry? (y/n) >> ")
+            if answer == "y" or answer == "n":
+                break
+        if answer == "n":
+            print("Exiting...")
+            return
+        else:
+            print("Overwriting...")
+
+    current_config[symbol] = chosen
+
+    save_config_file(config_file, current_config)
+    print("Done!")
+
+def import_symbol(args):
+    validate_import_symbol_args(args)
+
+    symbol = args.symbol
+    api_type = args.type
+
+    config_file = args.config_file
+
+    #TODO: Add coinhall?
+    if api_type == "coingecko":
+        import_symbol_coingecko_worker(symbol, config_file)
+            
+#Pulled from https://github.com/pharr117/levenshtein_dist 
+#A general string comparison algorithm: given a source string and a target string, calculates the distance between them
+#Returns a rank, the lower the rank the closer the words match.
+def levenshtein_dist_dp(source, target):
+
+    len_source = len(source)
+    len_target = len(target)
+    matrix = [[None for j in range(len_target+1)] for i in range(len_source+1)]
+
+    for i in range(len_source + 1):
+        for j in range(len_target+1):
+            if i == 0:
+                matrix[i][j] = j
+            elif j == 0:
+                matrix[i][j] = i
+            else:
+                if source[i-1] == target[j-1]:
+                    matrix[i][j] = matrix[i-1][j-1]
+                else:
+                    matrix[i][j] = 1 + min(matrix[i][j-1],
+                                           matrix[i-1][j],
+                                           matrix[i-1][j-1])
+
+    return matrix[len_source][len_target]
+
+def main():
+    args = parse_args(process, import_symbol)
+    args.func(args)
 
 if __name__ == "__main__":
     try:
