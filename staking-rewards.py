@@ -192,28 +192,30 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
                 symbols_to_dates_to_costs[symbol][date] = None
                 if request_url:
                     parameterized_url = add_coingecko_request_params(request_url, date)
-                    resp = requests.get(parameterized_url)
 
-                    try:
-                        resp.raise_for_status()
-                    except Exception as err:
-                        if resp.status_code == 429:
-                            print("A CoinGecko API throttle error occurred, self-throttling and trying again")
-                            time.sleep(COIN_GECKO_THROTTLE_TIME)
-                            resp = requests.get(parameterized_url)
-                            coingecko_requests_made = 1
-
-                            #give up after 1 retry
-                            try:
-                                resp.raise_for_status()
-                            except Exception as err:
-                                write_coingecko_cache(coingecko_cache, coingecko_cache_file)
+                    backing_off = False
+                    while True:
+                        resp = requests.get(parameterized_url)
+                        try:
+                            resp.raise_for_status()
+                            if backing_off:
+                                print("Backoff succeeded, continuing")
+                        except Exception as err:
+                            if resp.status_code == 429:
+                                print("A CoinGecko API throttle error occurred, self-throttling and trying again")
+                                print("Backing off and trying again in a minute")
+                                time.sleep(COIN_GECKO_THROTTLE_TIME)
+                                coingecko_requests_made = 1
+                                backing_off = True
+                            else:
                                 print("CoinGecko API call failed", err)
-                                raise CaughtError(f"CoinGecko API call failed, subsequent runs will use the cache file at {coingecko_cache_file} to start from this checkpoint")
+                                print("Backing off and trying again in a minute")
+                                time.sleep(COIN_GECKO_THROTTLE_TIME)
+                                coingecko_requests_made = 1
+                                backing_off = True
                         else:
-                            write_coingecko_cache(coingecko_cache, coingecko_cache_file)
-                            print("CoinGecko API call failed", err)
-                            raise CaughtError(f"CoinGecko API call failed, subsequent runs will use the cache file at {coingecko_cache_file} to start from this checkpoint")
+                            backing_off = False
+                            break
                         
                     #safely get a None value if the json structure is not found in response
                     #this was found during testing of some symbols where they store data but not the USD cost on that date
