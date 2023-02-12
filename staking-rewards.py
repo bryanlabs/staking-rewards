@@ -393,6 +393,27 @@ def make_coinhall_api_request(request_url, error_string, throttle_time):
         print(error_string, err)
         sys.exit(1)
 
+def count_symbol_totals(rows, key_data_point_indexes, symbol_column, value_column):
+    print("Counting symbol totals")
+    symbols_to_totals = {}
+    for row_index in key_data_point_indexes:
+        row = rows[row_index]
+        if row[value_column] and row[symbol_column]:
+            if row[symbol_column] in symbols_to_totals:
+                symbols_to_totals[row[symbol_column]] += row[value_column]
+            else:
+                symbols_to_totals[row[symbol_column]] = row[value_column]
+    
+    return symbols_to_totals
+
+def process_symbol_totals(symbols_to_totals):
+    rows = []
+
+    for symbol in symbols_to_totals:
+        rows.append({"symbol": symbol, "total": symbols_to_totals[symbol]})
+
+    return rows
+
 def output_rows(title, headers, rows, fname, format, sum_header=None):
     if format == "xlsx":
         print("Creating new Excel file", fname)
@@ -489,10 +510,17 @@ def process(args):
 
     title, headers, rows = parse_input_data(args.input_file)
     key_data_point_indexes = get_key_data_point_indexes(rows, args.date_column, args.year_filter)
+
+    count_totals = count_symbol_totals(rows, key_data_point_indexes, args.symbol_column, args.value_column)
+    count_rows = process_symbol_totals(count_totals)
+    print("Outputting symbol totals file")
+    output_rows(title, ["symbol", "total"], count_rows, args.output_file + f"-symbol-totals.{args.output_format}", args.output_format)
+
     simplified_rows_headers = [args.date_column, args.symbol_column, args.value_column, "usdValue"]
     rows, simplified_rows = process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, coinhall_symbols_to_id_configs, args.date_column, args.symbol_column, args.value_column, simplified_rows_headers, coingecko_cache, args.coingecko_cache)
     headers.append("usdValue")
     simplified_rows_headers.append("comment")
+
     output_rows(title, headers, rows, args.output_file, args.output_format)
     output_rows(title, simplified_rows_headers, simplified_rows, args.output_file + f"-simplified.{args.output_format}", args.output_format, sum_header="usdValue")
 
