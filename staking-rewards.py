@@ -394,7 +394,7 @@ def make_coinhall_api_request(request_url, error_string, throttle_time):
         sys.exit(1)
 
 def count_symbol_totals(rows, key_data_point_indexes, symbol_column, value_column):
-
+    print("Counting symbol totals")
     symbols_to_totals = {}
     for row_index in key_data_point_indexes:
         row = rows[row_index]
@@ -510,17 +510,19 @@ def process(args):
 
     title, headers, rows = parse_input_data(args.input_file)
     key_data_point_indexes = get_key_data_point_indexes(rows, args.date_column, args.year_filter)
+
+    count_totals = count_symbol_totals(rows, key_data_point_indexes, args.symbol_column, args.value_column)
+    count_rows = process_symbol_totals(count_totals)
+    print("Outputting symbol totals file")
+    output_rows(title, ["symbol", "total"], count_rows, args.output_file + f"-symbol-totals.{args.output_format}", args.output_format)
+
     simplified_rows_headers = [args.date_column, args.symbol_column, args.value_column, "usdValue"]
     rows, simplified_rows = process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, coinhall_symbols_to_id_configs, args.date_column, args.symbol_column, args.value_column, simplified_rows_headers, coingecko_cache, args.coingecko_cache)
     headers.append("usdValue")
     simplified_rows_headers.append("comment")
 
-    count_totals = count_symbol_totals(rows, key_data_point_indexes, args.symbol_column, args.value_column)
-    count_rows = process_symbol_totals(count_totals)
-
     output_rows(title, headers, rows, args.output_file, args.output_format)
     output_rows(title, simplified_rows_headers, simplified_rows, args.output_file + f"-simplified.{args.output_format}", args.output_format, sum_header="usdValue")
-    output_rows(title, ["symbol", "total"], count_rows, args.output_file + f"-symbol-totals.{args.output_format}", args.output_format)
 
 def import_symbol_coingecko_worker(symbol, config_file):
     print(f"Searching CoinGecko for symbol {symbol}")
