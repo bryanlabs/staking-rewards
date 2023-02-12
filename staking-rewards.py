@@ -393,10 +393,11 @@ def make_coinhall_api_request(request_url, error_string, throttle_time):
         print(error_string, err)
         sys.exit(1)
 
-def count_symbol_totals(rows, symbol_column, value_column):
+def count_symbol_totals(rows, key_data_point_indexes, symbol_column, value_column):
 
     symbols_to_totals = {}
-    for row in rows:
+    for row_index in key_data_point_indexes:
+        row = rows[row_index]
         if row[value_column] and row[symbol_column]:
             if row[symbol_column] in symbols_to_totals:
                 symbols_to_totals[row[symbol_column]] += row[value_column]
@@ -514,7 +515,7 @@ def process(args):
     headers.append("usdValue")
     simplified_rows_headers.append("comment")
 
-    count_totals = count_symbol_totals(rows, args.symbol_column, args.value_column)
+    count_totals = count_symbol_totals(rows, key_data_point_indexes, args.symbol_column, args.value_column)
     count_rows = process_symbol_totals(count_totals)
 
     output_rows(title, headers, rows, args.output_file, args.output_format)
