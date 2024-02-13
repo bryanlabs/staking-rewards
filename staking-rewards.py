@@ -46,7 +46,7 @@ def parse_args(process_function, import_symbol_function):
     parser_process_file.add_argument('--symbol-column', '-sc', help='The column in the EXCEL that stores the symbol of interest', default="boughtCurrency")
     parser_process_file.add_argument('--value-column', '-vc', help='The column in the EXCEL that stores the symbol of interest', default="boughtQuantity")
     parser_process_file.add_argument('--date-column', '-dc', help='The column in the EXCEL that stores the symbol of interest', default="timeExecuted")
-    parser_process_file.add_argument('--year-filter', '-yf', help='The year to gather data for', default=2022, type=int)
+    parser_process_file.add_argument('--year-filter', '-yf', help='The year to gather data for', default=2023, type=int)
     parser_process_file.add_argument('--coingecko-cache', '-cg-c', help='The JSON file holding cached data from CoinGecko (used in subsequent runs)', default="./.coingecko_cache.json", type=str)
     parser_process_file.set_defaults(func=process_function)
 
