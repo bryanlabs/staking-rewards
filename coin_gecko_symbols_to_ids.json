@@ -158,5 +158,30 @@
         "id": "ethereum",
         "symbol": "eth",
         "name": "Ethereum"
+    },
+    "STRD": {
+        "id": "stride",
+        "symbol": "strd",
+        "name": "Stride"
+    },
+    "NTRN": {
+        "id": "neutron-1",
+        "symbol": "ntrn",
+        "name": "Neutron Coin"
+    },
+    "STATOM": {
+        "id": "stride-staked-atom",
+        "symbol": "statom",
+        "name": "Stride Staked Atom"
+    },
+    "TIA": {
+        "id": "tia",
+        "symbol": "tia",
+        "name": "TIA"
+    },
+    "USDC": {
+        "id": "usd-coin",
+        "symbol": "usdc",
+        "name": "USDC"
     }
 }
