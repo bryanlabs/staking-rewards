@@ -253,6 +253,8 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
 
         try:
             row["usdValue"] = symbols_to_dates_to_costs[boughtCurrency][date_key] * row[valueColumn]
+            if row["usdValue"] < 0.01:
+                row["usdValue"] = 0.01
         except:
             missing_coingecko_coverage[i] = {"symbol": boughtCurrency, "date": row[date_column]}
 
@@ -291,6 +293,8 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
         for index in index_to_costs:
             row = rows[index]
             row["usdValue"] = index_to_costs[index]["high"] * row[valueColumn]
+            if row["usdValue"] < 0.01:
+                row["usdValue"] = 0.01
             rows[index] = row
 
         if missing_coinhall_coverage:
@@ -311,6 +315,8 @@ def process_rows(rows, key_data_point_indexes, coingecko_symbols_to_id_configs, 
     for index in key_data_point_indexes:
         row = rows[index]
         simplified_row = {header: row[header] for header in simplified_rows_headers}
+        if valueColumn in simplified_row and simplified_row[valueColumn] < 0.01:
+            simplified_row[valueColumn] = 0.01
         if index in missing_coinhall_coverage:
             simplified_row["comment"] = "Not covered, fixme"
         else:
